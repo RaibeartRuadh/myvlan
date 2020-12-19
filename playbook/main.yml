@@ -1,0 +1,296 @@
+---
+- hosts:
+   - inetRouter
+   - centralRouter
+   - officeRouter
+  become: true
+  tasks:
+    - name: Включаем перенаправление
+      sysctl:
+        name: net.ipv4.conf.all.forwarding
+        value: '1'
+        sysctl_set: yes
+        reload: yes
+
+- hosts: inetRouter
+  become: true
+  tasks:
+
+  - name: Кофируем сетевые параметры
+    copy:
+      src: 'inetRouter/{{item}}'
+      dest: '/etc/sysconfig/network-scripts'
+      owner: root
+      group: root
+      mode: 0644
+    loop:
+      - ifcfg-eth1
+      - ifcfg-eth2
+      - ifcfg-team0
+
+  - name: Рестарт сетки
+    systemd:
+      name: NetworkManager
+      state: restarted
+
+  - name: путь 192.168.0.0/16 через centralRouter
+    command: ip route replace 192.168.0.0/16 via 192.168.255.2
+
+  - name: путь на vlan100 через centralRouter
+    command: ip route replace 10.10.100.0/24 via 192.168.255.2
+
+  - name: путь на vlan101 через centralRouter
+    command: ip route replace 10.10.101.0/24 via 192.168.255.2
+
+  - name: Маскарадинг на выход в сеть
+    iptables:
+      table: nat
+      out_interface: eth0
+      destination: "!192.168.0.0/16"
+      chain: POSTROUTING
+      jump: MASQUERADE
+
+- hosts: centralRouter
+  become: true
+  tasks:
+
+  - name: Кофируем сетевые параметры
+    copy:
+      src: 'centralRouter/{{item}}'
+      dest: '/etc/sysconfig/network-scripts'
+      owner: root
+      group: root
+      mode: 0644
+    loop:
+      - ifcfg-eth0
+      - ifcfg-eth1
+      - ifcfg-eth2
+      - ifcfg-team0
+      
+  - name: Рестарт сетки
+    systemd:
+      name: NetworkManager
+      state: restarted  
+
+  - name: путь по умолчанию inetRouter
+    command: ip route replace default via 192.168.255.1
+
+  - name: добавляем путь vlans100 через office1Router
+    command: ip route replace 10.10.100.0/24 via 192.168.255.6
+
+  - name: добавляем путь vlans101 via office1Router
+    command: ip route replace 10.10.101.0/24 via 192.168.255.6
+
+- hosts: officeRouter
+  become: true
+  tasks:
+  
+  - name: Кофируем сетевые параметры
+    copy:
+      src: 'officeRouter/{{item}}'
+      dest: '/etc/sysconfig/network-scripts'
+      owner: root
+      group: root
+      mode: 0644
+    loop:
+      - ifcfg-eth0
+      - ifcfg-eth1
+      - ifcfg-eth2.100
+      - ifcfg-eth2.101
+
+  - name: Рестарт сетки
+    systemd:
+      name: NetworkManager
+      state: restarted  
+ 
+### https://habr.com/ru/sandbox/39663/
+### https://docs.ansible.com/ansible/latest/collections/cisco/ios/ios_vrf_module.html
+  - name: default route via centralRouter
+    command: ip route replace default via 192.168.255.5
+
+  - name: check exists VRF100
+    stat:
+      path: /var/run/netns/VRF100
+      get_checksum: no
+    register: net100
+
+  - name: add netns VRF100
+    command: ip netns add VRF100
+
+  - name: set eth2.100 to netns VRF100
+    command: ip link set eth2.100 netns VRF100
+
+  - name: add 10.10.10.2/24 dev eth2.100
+    command: ip netns exec VRF100 ip address add 10.10.10.2/24 dev eth2.100
+
+  - name: eth2.100 up
+    command: ip netns exec VRF100 ip link set eth2.100 up
+
+  - name: link veth100-vrf with veth100
+    command: ip link add veth100-vrf type veth peer name veth100
+
+  - name: veth100-vrf up
+    command: ip link set veth100-vrf up
+
+  - name: set veth100 to netns VRF100
+    command: ip link set veth100 netns VRF100
+
+  - name: veth100 up
+    command: ip netns exec VRF100 ip link set veth100 up
+
+  - name: add 172.29.100.1/30 dev veth100-vrf
+    command: ip address add 172.29.100.1/30 dev veth100-vrf
+
+  - name: add 172.29.100.2/30 dev veth100
+    command: ip netns exec VRF100 ip address add 172.29.100.2/30 dev veth100
+
+  - name: route default via 172.29.100.1 for VRF100
+    command: ip netns exec VRF100 ip route add default via 172.29.100.1
+
+  - name: route 10.10.100.0/24 via 172.29.100.2
+    command: ip route add 10.10.100.0/24 via 172.29.100.2
+
+  - name: PREROUTING 10.10.100.0/24 to 10.10.10.0/24
+    command: ip netns exec VRF100 iptables -t nat -I PREROUTING -d 10.10.100.0/24 -j NETMAP --to 10.10.10.0/24
+
+  - name: POSTROUTING 10.10.10.0/24 to 10.10.100.0/24
+    command: ip netns exec VRF100 iptables -t nat -I POSTROUTING -s 10.10.10.0/24 -j NETMAP --to 10.10.100.0/24
+
+  - name: check exists VRF101
+    stat:
+      path: /var/run/netns/VRF101
+      get_checksum: no
+    register: net101
+
+  - name: add netns VRF101
+    command: ip netns add VRF101
+
+  - name: set eth2.101 to netns VRF101
+    command: ip link set eth2.101 netns VRF101
+
+  - name: add 10.10.10.2/24 dev eth2.101
+    command: ip netns exec VRF101 ip address add 10.10.10.2/24 dev eth2.101
+
+  - name: eth2.101 up
+    command: ip netns exec VRF101 ip link set eth2.101 up
+
+  - name: link veth101-vrf with veth101
+    command: ip link add veth101-vrf type veth peer name veth101
+
+  - name: veth101-vrf up
+    command: ip link set veth101-vrf up
+
+  - name: set veth101 to netns VRF101
+    command: ip link set veth101 netns VRF101
+
+  - name: veth101 up
+    command: ip netns exec VRF101 ip link set veth101 up
+
+  - name: add 172.29.101.1/30 dev veth101-vrf
+    command: ip address add 172.29.101.1/30 dev veth101-vrf
+
+  - name: add 172.29.101.2/30 dev veth101
+    command: ip netns exec VRF101 ip address add 172.29.101.2/30 dev veth101
+
+  - name: route default via 172.29.101.1 for VRF101
+    command: ip netns exec VRF101 ip route add default via 172.29.101.1
+
+  - name: route 10.10.101.0/24 via 172.29.101.2
+    command: ip route add 10.10.101.0/24 via 172.29.101.2
+
+  - name: PREROUTING 10.10.101.0/24 to 10.10.10.0/24
+    command: ip netns exec VRF101 iptables -t nat -I PREROUTING -d 10.10.101.0/24 -j NETMAP --to 10.10.10.0/24
+
+  - name: POSTROUTING 10.10.10.0/24 to 10.10.101.0/24
+    command: ip netns exec VRF101 iptables -t nat -I POSTROUTING -s 10.10.10.0/24 -j NETMAP --to 10.10.101.0/24
+
+- hosts:
+    - testServer1
+  become: true
+  tasks:
+
+  - name: Кофируем сетевые параметры
+    copy:
+      src: 'testServer1/ifcfg-eth1.100'
+      dest: '/etc/sysconfig/network-scripts'
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Рестарт сетки
+    systemd:
+      name: NetworkManager
+      state: restarted  
+      
+  - name: Путь по умолчанию через officeRouter
+    command: ip route replace default via 10.10.10.2
+
+
+- hosts:
+    - testClient1
+  become: true
+  tasks:
+
+  - name: Кофируем сетевые параметры
+    copy:
+      src: 'testClient1/ifcfg-eth1.100'
+      dest: '/etc/sysconfig/network-scripts'
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Рестарт сетки
+    systemd:
+      name: NetworkManager
+      state: restarted
+
+  - name: Путь по умолчанию через  officeRouter
+    command: ip route replace default via 10.10.10.2
+    
+- hosts:
+    - testServer2
+  become: true
+  tasks:
+
+  - name: Кофируем сетевые параметры
+    copy:
+      src: 'testServer2/ifcfg-eth1.101'
+      dest: '/etc/sysconfig/network-scripts'
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Рестарт сетки
+    systemd:
+      name: NetworkManager
+      state: restarted
+
+  - name: Путь по умолчанию через officeRouter
+    command: ip route replace default via 10.10.10.2
+    
+- hosts:
+    - testClient2
+  become: true
+  tasks:
+
+  - name: Кофируем сетевые параметры
+    copy:
+      src: 'testClient2/ifcfg-eth1.101'
+      dest: '/etc/sysconfig/network-scripts'
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Рестарт сетки
+    systemd:
+      name: NetworkManager
+      state: restarted              
+
+  - name: Путь по умолчанию через  officeRouter
+    command: ip route replace default via 10.10.10.2
+
+
+
+
+
+
