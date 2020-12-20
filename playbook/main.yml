@@ -116,45 +116,59 @@
 
   - name: add netns VRF100
     command: ip netns add VRF100
-
+    when: net100.stat.exists == False
+    
   - name: set eth2.100 to netns VRF100
     command: ip link set eth2.100 netns VRF100
-
+    when: net100.stat.exists == False
+    
   - name: add 10.10.10.2/24 dev eth2.100
     command: ip netns exec VRF100 ip address add 10.10.10.2/24 dev eth2.100
-
+    when: net100.stat.exists == False
+    
   - name: eth2.100 up
     command: ip netns exec VRF100 ip link set eth2.100 up
-
+    when: net100.stat.exists == False
+    
   - name: link veth100-vrf with veth100
     command: ip link add veth100-vrf type veth peer name veth100
-
+    when: net100.stat.exists == False
+    
   - name: veth100-vrf up
     command: ip link set veth100-vrf up
+    when: net100.stat.exists == False
 
   - name: set veth100 to netns VRF100
     command: ip link set veth100 netns VRF100
+    when: net100.stat.exists == False
 
   - name: veth100 up
     command: ip netns exec VRF100 ip link set veth100 up
+    when: net100.stat.exists == False
 
   - name: add 172.29.100.1/30 dev veth100-vrf
     command: ip address add 172.29.100.1/30 dev veth100-vrf
+    when: net100.stat.exists == False
 
   - name: add 172.29.100.2/30 dev veth100
     command: ip netns exec VRF100 ip address add 172.29.100.2/30 dev veth100
+    when: net100.stat.exists == False
 
   - name: route default via 172.29.100.1 for VRF100
     command: ip netns exec VRF100 ip route add default via 172.29.100.1
+    when: net100.stat.exists == False
 
   - name: route 10.10.100.0/24 via 172.29.100.2
     command: ip route add 10.10.100.0/24 via 172.29.100.2
+    when: net100.stat.exists == False
 
   - name: PREROUTING 10.10.100.0/24 to 10.10.10.0/24
     command: ip netns exec VRF100 iptables -t nat -I PREROUTING -d 10.10.100.0/24 -j NETMAP --to 10.10.10.0/24
+    when: net100.stat.exists == False
 
   - name: POSTROUTING 10.10.10.0/24 to 10.10.100.0/24
     command: ip netns exec VRF100 iptables -t nat -I POSTROUTING -s 10.10.10.0/24 -j NETMAP --to 10.10.100.0/24
+    when: net100.stat.exists == False
 
   - name: check exists VRF101
     stat:

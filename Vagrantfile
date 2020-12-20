@@ -19,7 +19,7 @@ MACHINES = {
     ]
   },
 
-  office1Router: {
+  officeRouter: {
     box_name: 'centos/7',
     net: [
                {adapter: 2, auto_config: false, virtualbox__intnet: "central-net"},
