@@ -60,7 +60,48 @@ testClient2 <-> testServer2
      2:  no reply
 
 
-Отключим один из линков:
+testClient1 и testServer1 присутствует в vlan100 
+
+            [vagrant@testClient1 ~]$ cat /etc/sysconfig/network-scripts/ifcfg-eth1.101
+            cat: /etc/sysconfig/network-scripts/ifcfg-eth1.101: No such file or directory
+            [vagrant@testClient1 ~]$ cat /etc/sysconfig/network-scripts/ifcfg-eth1.100
+            VLAN=yes
+            TYPE=Vlan
+            PHYSDEV=eth1
+            VLAN_ID=100
+            BOOTPROTO=none
+            IPADDR=10.10.10.1
+            PREFIX=24
+            DEFROUTE=yes
+            IPV4_FAILURE_FATAL=no
+            IPV6INIT=no
+            NAME=eth1.100
+            DEVICE=eth1.100
+            ONBOOT=yes
+            [vagrant@testClient1 ~]$
+
+
+testClient2 и testServer2 присутствует в vlan101
+            
+            [vagrant@testClient2 ~]$ cat /etc/sysconfig/network-scripts/ifcfg-eth1.100
+            cat: /etc/sysconfig/network-scripts/ifcfg-eth1.100: No such file or directory
+            [vagrant@testClient2 ~]$ cat /etc/sysconfig/network-scripts/ifcfg-eth1.101
+            VLAN=yes
+            TYPE=Vlan
+            PHYSDEV=eth1
+            VLAN_ID=101
+            BOOTPROTO=none
+            IPADDR=10.10.10.1
+            PREFIX=24
+            DEFROUTE=yes
+            IPV4_FAILURE_FATAL=no
+            IPV6INIT=no
+            NAME=eth1.101
+            DEVICE=eth1.101
+            ONBOOT=yes
+            [vagrant@testClient2 ~]$ 
+
+####
 
     [root@centralRouter ~]# ip link set dev eth1 down
     [root@centralRouter ~]# teamdctl team0 state
@@ -81,49 +122,6 @@ testClient2 <-> testServer2
             name: ethtool
             link: down
             down count: 1
-
-
-
-
-
-    [vagrant@testClient1 ~]$ cat /etc/sysconfig/network-scripts/ifcfg-eth1.100 
-    VLAN=yes
-    TYPE=Vlan
-    PHYSDEV=eth1
-    VLAN_ID=100
-    BOOTPROTO=none
-    IPADDR=10.10.10.1
-    PREFIX=24
-    DEFROUTE=yes
-    IPV4_FAILURE_FATAL=no
-    IPV6INIT=no
-    NAME=eth1.100
-    DEVICE=eth1.100
-    ONBOOT=yes
-    [vagrant@testClient1 ~]$ 
-
-
-
-    [vagrant@testClient2 ~]$ cat /etc/sysconfig/network-scripts/ifcfg-eth1.101
-    VLAN=yes
-    TYPE=Vlan
-    PHYSDEV=eth1
-    VLAN_ID=101
-    BOOTPROTO=none
-    IPADDR=10.10.10.1
-    PREFIX=24
-    DEFROUTE=yes
-    IPV4_FAILURE_FATAL=no
-    IPV6INIT=no
-    NAME=eth1.101
-    DEVICE=eth1.101
-    ONBOOT=yes
-
-
-
-
-
-
 
 
 
